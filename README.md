@@ -24,3 +24,6 @@ The `.env.example` lists planned integration variables; none are required to run
 ## Next steps
 
 Implement an isolated FFmpeg and faster-whisper worker, a durable queue, secure provider key storage and fallback routing with tests, followed by an accessible editor and actual exports. Keep the experience account-free. Any future hosted storage must protect anonymous users’ data with an explicit security design; anonymous access alone is not a privacy boundary. Verify provider terms and link rights before implementing ingestion. Deploy processing only after security and end-to-end testing.
+
+### Testing provider keys
+Settings can test Groq, Gemini, and Cloudflare keys using their model-list APIs. Keys remain in page memory, are sent to the server only for the test, and are cleared on refresh; they are not stored or used for video processing. Cloudflare also needs its account ID. External provider access and a real key are required to test successfully. Do not treat this feature as production-ready key management: encrypted persistence, abuse controls, and the AI pipeline are not implemented.

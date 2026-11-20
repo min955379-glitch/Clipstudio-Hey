@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile, open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import { chooseSegments, normaliseWords, subtitles } from './core.mjs';
+import { chooseSegments, mergeChunkWords, planChunks, supportedContainer, subtitles } from './core.mjs';
 
 // Local-file MVP only. Never expose this CLI directly to untrusted network requests.
 const [inputArg, outputArg, countArg='3'] = process.argv.slice(2);
@@ -29,30 +29,35 @@ async function groq(path, body, json=false) {
     try { response=await fetch(`https://api.groq.com/openai/v1/${path}`,{method:'POST',headers:{Authorization:`Bearer ${key}`,...(json?{'Content-Type':'application/json'}:{})},body:json?JSON.stringify(body):body,signal:AbortSignal.timeout(120000)}); }
     catch { if(attempt===2) throw new Error('Could not reach Groq.'); await new Promise(r=>setTimeout(r,1000*2**attempt)); continue; }
     if(response.ok) return response.json();
-    if((response.status===429||response.status>=500) && attempt<2){await new Promise(r=>setTimeout(r,1000*2**attempt));continue}
+    if((response.status===429||response.status>=500) && attempt<2){const retry=Number(response.headers.get('retry-after')); const wait=Number.isFinite(retry)&&retry>0?Math.min(retry*1000,30000):1000*2**attempt;await new Promise(r=>setTimeout(r,wait));continue}
     throw new Error(`Groq request failed (HTTP ${response.status}). Check key permissions, model access, and limits.`);
   }
   throw new Error('Groq is unavailable.');
 }
 let temp;
 try {
-  const info=await stat(input); if(!info.isFile() || info.size>2*1024**3) throw new Error('Choose a file under 2 GB.');
+  const info=await stat(input); if(!info.isFile() || info.size>1024**3) throw new Error('Choose a file under 1 GB.');
+  const file=await open(input,'r'); const header=Buffer.alloc(16); try { await file.read(header,0,16,0); } finally { await file.close(); }
+  if (!supportedContainer(header)) throw new Error('Unsupported video file. Choose MP4, MOV, MKV or WEBM.');
   temp=await mkdtemp(join(tmpdir(),'clipstudio-')); await mkdir(output,{recursive:true});
   if ((await readdir(output)).length) throw new Error('Output directory must be empty to avoid overwriting files.');
   console.log('Inspecting video…');
-  const probe=JSON.parse(await run('ffprobe',['-v','error','-show_entries','format=duration','-of','json',input],temp));
+  const probe=JSON.parse(await run('ffprobe',['-v','error','-show_entries','format=duration:stream=codec_type','-of','json',input],temp));
   const duration=Number(probe.format?.duration);if(!Number.isFinite(duration)||duration<=0) throw new Error('Could not determine video duration.');
-  console.log('Extracting audio…');
-  await run('ffmpeg',['-hide_banner','-loglevel','error','-i',input,'-vn','-ac','1','-ar','16000','-c:a','libmp3lame','-b:a','32k','-f','segment','-segment_time','600','-reset_timestamps','1','chunk-%05d.mp3'],temp);
-  const chunks=(await readdir(temp)).filter(n=>/^chunk-\d{5}\.mp3$/.test(n)).sort();if(!chunks.length) throw new Error('No audio found in video.');
-  const words=[];
+  if(duration>7200) throw new Error('Video exceeds the two-hour limit.');
+  if(!probe.streams?.some(s=>s.codec_type==='video')) throw new Error('The file does not contain video.');
+  if(!probe.streams?.some(s=>s.codec_type==='audio')) throw new Error('The video has no audio to transcribe.');
+  const chunks=planChunks(duration), transcripts=[];
   for(let i=0;i<chunks.length;i++){
-    console.log(`Transcribing audio ${i+1}/${chunks.length}…`);
-    const bytes=await readFile(join(temp,chunks[i])); const form=new FormData();
-    form.append('file',new Blob([bytes],{type:'audio/mpeg'}),chunks[i]);form.append('model',transcriptionModel);form.append('response_format','verbose_json');form.append('timestamp_granularities[]','word');
-    const transcript=await groq('audio/transcriptions',form);
-    words.push(...normaliseWords(transcript.words,i*600));
+    const chunk=chunks[i], path=join(temp,`chunk-${i}.mp3`);
+    console.log(`Extracting and transcribing audio ${i+1}/${chunks.length}…`);
+    await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-ss',String(chunk.start),'-i',input,'-t',String(chunk.end-chunk.start),'-vn','-ac','1','-ar','16000','-c:a','libmp3lame','-b:a','32k',path],temp);
+    const bytes=await readFile(path); const form=new FormData();
+    form.append('file',new Blob([bytes],{type:'audio/mpeg'}),`chunk-${i}.mp3`);form.append('model',transcriptionModel);form.append('response_format','verbose_json');form.append('timestamp_granularities[]','word');
+    const transcript=await groq('audio/transcriptions',form); transcripts.push(transcript.words);
+    await rm(path,{force:true});
   }
+  const words=mergeChunkWords(chunks,transcripts);
   if(!words.length) throw new Error('No word timestamps returned; cannot create captioned clips.');
   const transcript=words.map(w=>`${w.start.toFixed(1)} ${w.word}`).join(' ');
   if(transcript.length>90000) throw new Error('Transcript is too long for this MVP. Try a shorter video.');

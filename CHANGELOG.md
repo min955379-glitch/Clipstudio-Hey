@@ -8,3 +8,4 @@
 - Added illustrative caption previews, browser-only preferences, a support FAQ, and provider information with key entry disabled pending secure implementation.
 - Added session-only API key inputs and provider connection tests. Keys are not saved or connected to clipping.
 - Added an experimental Dockerized local-file clipping worker and unit tests; it is not connected to the website or cloud storage.
+- Added overlapping audio chunk timing, basic file signature checks and media limits to the experimental local worker; clarified the offline upload and link-import states. No hosted processing service is available yet.

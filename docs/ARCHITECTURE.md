@@ -1,0 +1,7 @@
+# Upload-only clipping: current status and target
+
+The only implemented processing component is a **local, experimental CLI** (`apps/worker`). It uses no Supabase, accepts a local file, and can extract overlapping audio chunks, request Groq transcription and analysis, and render captioned, center-cropped clips. It is not an HTTP service, does not support browser uploads or job tracking, and has not been verified end-to-end with a real provider in this environment.
+
+Target architecture (not implemented): the browser obtains short-lived scoped upload/job credentials from the Vercel server, uploads chunks **directly** to a separate worker, then polls for progress. Worker-side job and storage interfaces should isolate ephemeral disk today from durable storage later. FFmpeg and provider credentials must stay off Vercel's browser-facing bundle. Ephemeral uploads require expiry and explicit warnings. Do not expose the current CLI directly as an HTTP service: it lacks authentication, multi-tenant isolation, rate limiting, job cancellation, upload validation at service boundaries, and resource quotas.
+
+A genuinely free container host must support enough CPU, disk, request duration and background execution; those limits and current availability need verification before deployment. Hugging Face Spaces Docker can sleep and has ephemeral storage. Provider free access is variable and not guaranteed. No host account is connected in this session and no production worker has been deployed.

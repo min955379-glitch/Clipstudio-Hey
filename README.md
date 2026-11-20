@@ -27,3 +27,19 @@ Implement an isolated FFmpeg and faster-whisper worker, a durable queue, secure 
 
 ### Testing provider keys
 Settings can test Groq, Gemini, and Cloudflare keys using their model-list APIs. Keys remain in page memory, are sent to the server only for the test, and are cleared on refresh; they are not stored or used for video processing. Cloudflare also needs its account ID. External provider access and a real key are required to test successfully. Do not treat this feature as production-ready key management: encrypted persistence, abuse controls, and the AI pipeline are not implemented.
+
+### Experimental local video worker
+
+`apps/worker` is an isolated local-file CLI prototype, not a connected web service. It extracts mono audio in ten-minute chunks, asks Groq Whisper for word timestamps, asks a Groq chat model for candidate moments, and uses FFmpeg to produce center-cropped 720×1280 MP4 clips with burned subtitles and a JSON manifest. It uses a temporary directory and removes it on exit. This is not face tracking. Cloud storage, user authentication, a job queue, durable progress, automatic job retries, multi-provider fallback, and the website download button are **not connected**. Audio chunk offsets are approximate and require end-to-end verification for long recordings. The worker does not download links.
+
+To try locally, install Node 20+, FFmpeg (including libass, libmp3lame and libx264), and configure a Groq key in your shell without committing it. Then run:
+
+```sh
+# Set GROQ_API_KEY in your environment first; do not paste keys into source code.
+node apps/worker/src/index.mjs /path/to/video.mp4 /path/to/empty-output-directory 3
+node --test apps/worker/test/*.test.mjs
+```
+
+Models can be changed with `GROQ_TRANSCRIPTION_MODEL` and `GROQ_ANALYSIS_MODEL`. Provider availability and quotas vary, and Groq may not be free for all workloads. Inputs over 2 GB, clips without word timestamps, and transcripts over 90,000 characters are rejected. The requested Docker image can be built with `docker build -t clipstudio-worker apps/worker`; run it with local input and output volumes and `GROQ_API_KEY` injected via the environment. Neither Docker nor an end-to-end run with a real provider was verified in this environment. Output directories must be empty; a failed run may leave partial output files, which should be removed before retrying.
+
+The requested dedicated Supabase project could not be created because the organization is at its free-project limit. No existing project was changed. Anonymous authentication, cross-device recovery, encrypted key storage and web uploads remain to be implemented after a project slot is available. The worker is not safe to expose as a public job service without authorization, rate limits, storage isolation and queue hardening.

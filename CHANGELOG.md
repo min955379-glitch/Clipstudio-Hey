@@ -7,3 +7,4 @@
 - Clarified unavailable processing, aligned the default clip count, and added route metadata, search indexing files, and an icon.
 - Added illustrative caption previews, browser-only preferences, a support FAQ, and provider information with key entry disabled pending secure implementation.
 - Added session-only API key inputs and provider connection tests. Keys are not saved or connected to clipping.
+- Added an experimental Dockerized local-file clipping worker and unit tests; it is not connected to the website or cloud storage.

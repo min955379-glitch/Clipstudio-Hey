@@ -1,0 +1,9 @@
+# Persistence foundation (not connected)
+
+The migration is a draft for a **new dedicated project only**. It has not been run or independently reviewed. It creates private user-scoped tables and storage policies; API-key ciphertext is inaccessible to browser roles and requires a future server-side, owner-verified API. The composite foreign keys prevent a user's model or clip from referring to another user's key or project. No expiry/deletion job is included. Database cascade deletion does not delete Storage objects; a future account/project deletion flow must explicitly remove those objects before deleting records.
+
+There is no login, persistence, encryption, project migration, Storage upload, keep-alive, or account deletion integration yet. Setting environment variables alone will **not** enable these features. Do not apply this draft to an existing project or trust it with real data until RLS, storage, auth and API tests pass.
+
+Local testing requires Docker and the Supabase CLI. After installing both, run `supabase init` if no local config exists, then `supabase start` and `supabase db reset` from the repository root. The reset is destructive to the local database only; confirm CLI is pointing at local before running. This environment has no Docker or installed CLI; no local database or RLS tests were run.
+
+For production a free project slot must be made available in the user's Supabase organization; do not modify clear-rewrite or bluepeak-access without the user's action. Configure the new project and Vercel with `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and a separate randomly generated `ENCRYPTION_SECRET`; keep both latter values server-only. Never paste secrets into chat. Auth providers, redirects, SMTP, service-backed routes and a secure data migration still need implementation and verification before launch.
